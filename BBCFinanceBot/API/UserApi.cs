@@ -13,7 +13,7 @@ public class UserApi
     public UserApi()
     {
         _httpClient = new HttpClient();
-        _httpClient.BaseAddress = new Uri("https://localhost:7166/");
+        _httpClient.BaseAddress = new Uri("http://185.231.206.160/");
     } 
     
     public async Task<bool> UserExists(long tgUserId)
