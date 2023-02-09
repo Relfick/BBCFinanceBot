@@ -79,9 +79,10 @@ class Program
                 cancellationToken: cts.Token
             );
             var me = await Bot.GetMeAsync(cts.Token);
-            await Bot.SendTextMessageAsync(chatId: 321276694, text: "Здарова-здарова");
 
             Console.WriteLine($"Start listening for @{me.Username}");
+            
+            await Bot.SendTextMessageAsync(chatId: 321276694, text: "Здарова-здарова");
             Console.ReadLine();
         }
         catch (Exception e)

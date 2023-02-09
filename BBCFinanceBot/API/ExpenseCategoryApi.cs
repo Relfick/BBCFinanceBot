@@ -28,7 +28,7 @@ public class ExpenseCategoryApi
         return categories;
     }
 
-    public async Task<bool> PostCategory(UserExpenseCategory newCategory)
+    public async Task<bool> PostCategory(ExpenseCategory newCategory)
     {
         var httpResponseMessage = await _httpClient.PostAsJsonAsync("api/UserExpenseCategory", newCategory);
         return httpResponseMessage.IsSuccessStatusCode;

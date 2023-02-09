@@ -116,7 +116,7 @@ public class CategoryHandler
             return await _bot.SendTextMessageAsync(chatId: _tgUserId,
                 text: $"У вас уже есть категория {newCategoryText}");
         
-        var newCategory = new UserExpenseCategory(_tgUserId, newCategoryText);
+        var newCategory = new ExpenseCategory(_tgUserId, newCategoryText);
         
         bool success = await _categoryApi.PostCategory(newCategory);
         if (!success)
