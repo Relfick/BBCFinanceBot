@@ -82,7 +82,7 @@ class Program
 
             Console.WriteLine($"Start listening for @{me.Username}");
             
-            await Bot.SendTextMessageAsync(chatId: 321276694, text: "Здарова-здарова");
+            await Bot.SendTextMessageAsync(chatId: 321276694, text: "Бот запущен!");
             Console.ReadLine();
         }
         catch (Exception e)
