@@ -4,21 +4,17 @@ using BBCFinanceBot.Models;
 
 namespace BBCFinanceBot.API;
 
-public class ExpenseCategoryApi
+public class ExpenseCategoryApi: BaseApi
 {
-    private readonly HttpClient _httpClient;
-
     public ExpenseCategoryApi()
     {
-        _httpClient = new HttpClient();
-        _httpClient.BaseAddress = new Uri("http://185.231.206.160/");
+        _httpClient.BaseAddress = new Uri(_httpClient.BaseAddress!, "UserExpenseCategory/");
     }
-
     public async Task<List<string>> GetUserCategories(long tgUserId)
     {
         // TODO: Log it
         string errorLog = "";
-        var httpResponseMessage = await _httpClient.GetAsync($"api/UserExpenseCategory/{tgUserId}");
+        var httpResponseMessage = await _httpClient.GetAsync($"{tgUserId}");
         if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
             throw new Exception("Error in api method");     // TODO: refactor
 
@@ -30,7 +26,7 @@ public class ExpenseCategoryApi
 
     public async Task<bool> PostCategory(ExpenseCategory newCategory)
     {
-        var httpResponseMessage = await _httpClient.PostAsJsonAsync("api/UserExpenseCategory", newCategory);
+        var httpResponseMessage = await _httpClient.PostAsJsonAsync("", newCategory);
         return httpResponseMessage.IsSuccessStatusCode;
     }
 
@@ -39,7 +35,7 @@ public class ExpenseCategoryApi
         // TODO: Log it
         string errorLog = "";
         
-        var httpResponseMessage = await _httpClient.PutAsJsonAsync($"api/UserExpenseCategory/{tgUserId}", categories);
+        var httpResponseMessage = await _httpClient.PutAsJsonAsync($"{tgUserId}", categories);
         if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
             errorLog = $"У вас нет категории {categories["oldCategory"]}";
 
@@ -56,7 +52,7 @@ public class ExpenseCategoryApi
         // TODO: Log it
         string errorLog = "";
         var httpResponseMessage = await _httpClient.DeleteAsync(
-            $"api/UserExpenseCategory/{tgUserId}/{categoryToRemove}");
+            $"{tgUserId}/{categoryToRemove}");
         
         return httpResponseMessage.IsSuccessStatusCode;
     }

@@ -8,16 +8,16 @@ namespace BBCFinanceBot.API;
 
 public class ExpenseApi : BaseApi
 {
-    public ExpenseApi() : base()
+    public ExpenseApi()
     {
+        _httpClient.BaseAddress = new Uri(_httpClient.BaseAddress!, "expense/");
     }
-
     public async Task<List<Expense>> GetExpenses(long tgUserId)
     {
         // TODO: Log it
         string errorLog = "";
 
-        var httpResponseMessage = await _httpClient.GetAsync($"api/Expense/{tgUserId}");
+        var httpResponseMessage = await _httpClient.GetAsync($"{tgUserId}");
         if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
             errorLog = "Error with null _db.Expenses";
         else if (!httpResponseMessage.IsSuccessStatusCode)
@@ -32,7 +32,7 @@ public class ExpenseApi : BaseApi
         // TODO: Log it
         string errorLog = "";
 
-        var httpResponseMessage = await _httpClient.GetAsync($"api/Expense/{tgUserId}/{category}");
+        var httpResponseMessage = await _httpClient.GetAsync($"{tgUserId}/{category}");
         if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
             errorLog = "Error with null _db.Expenses";
         else if (!httpResponseMessage.IsSuccessStatusCode)
@@ -47,7 +47,7 @@ public class ExpenseApi : BaseApi
         var expenseJson = JsonSerializer.Serialize(expense);
         var content = new StringContent(expenseJson, Encoding.Default, "application/json");
 
-        var httpResponseMessage = await _httpClient.PostAsync("api/Expense", content);
+        var httpResponseMessage = await _httpClient.PostAsync("", content);
 
         return httpResponseMessage;
     }

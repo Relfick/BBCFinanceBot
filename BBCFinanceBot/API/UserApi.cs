@@ -6,25 +6,21 @@ using User = BBCFinanceBot.Models.User;    // Telegram.Bot.Types contains the sa
 
 namespace BBCFinanceBot.API;
 
-public class UserApi
+public class UserApi: BaseApi
 {
-    private readonly HttpClient _httpClient;
-
     public UserApi()
     {
-        _httpClient = new HttpClient();
-        _httpClient.BaseAddress = new Uri("http://185.231.206.160/");
-    } 
-    
+        _httpClient.BaseAddress = new Uri(_httpClient.BaseAddress!, "user/");
+    }
     public async Task<bool> UserExists(long tgUserId)
     {
-        var httpResponseMessage = await _httpClient.GetAsync($"api/User/{tgUserId}");
+        var httpResponseMessage = await _httpClient.GetAsync($"{tgUserId}");
         return httpResponseMessage.IsSuccessStatusCode;
     }
     
     public async Task<bool> PostUser(User newUser)
     {
-        var httpResponseMessage = await _httpClient.PostAsJsonAsync("api/User", newUser);
+        var httpResponseMessage = await _httpClient.PostAsJsonAsync("", newUser);
         return httpResponseMessage.IsSuccessStatusCode;
     }
 
@@ -33,7 +29,7 @@ public class UserApi
         // TODO: log it
         string errorLog = "";
 
-        var httpResponseMessage = await _httpClient.PutAsJsonAsync($"api/User/workmode/{tgUserId}", workMode);
+        var httpResponseMessage = await _httpClient.PutAsJsonAsync($"workmode/{tgUserId}", workMode);
         
         return httpResponseMessage.IsSuccessStatusCode;
     }
@@ -43,7 +39,7 @@ public class UserApi
         // TODO: log it
         string errorLog = "";
         
-        var httpResponseMessage = await _httpClient.GetAsync($"api/User/{tgUserId}");
+        var httpResponseMessage = await _httpClient.GetAsync($"{tgUserId}");
         if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
             return null;
 

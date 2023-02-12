@@ -6,7 +6,7 @@ public class BaseApi
 
     protected BaseApi()
     {
-        _httpClient = new HttpClient() { BaseAddress = new Uri("http://185.231.206.160/") };
+        _httpClient = new HttpClient { BaseAddress = new Uri("http://185.231.206.160/api/") };
     }
 
     public List<string> GetErrors(HttpResponseMessage msg)
