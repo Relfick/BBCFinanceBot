@@ -15,7 +15,7 @@ public abstract class BaseApi
     
     protected BaseApi(long tgUserId)
     {
-        _httpClient = new HttpClient { BaseAddress = new Uri("http://185.231.206.160/api/") };
+        _httpClient = new HttpClient { BaseAddress = new Uri("https://localhost:5000/api/") };
         _authSuccess = SetBearer(tgUserId);
     }
 
