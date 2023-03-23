@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Net;
+using System.Text;
 using BBCFinanceBot.API;
 using BBCFinanceBot.Models;
 using Telegram.Bot;
@@ -7,37 +8,27 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BBCFinanceBot.BotHandlers;
 
-public class CategoryHandler
+public class CategoryHandler: BaseHandler
 {
-    private readonly ITelegramBotClient _bot;
-    private readonly Message _message;
     private string _messageText;
-    private readonly long _tgUserId;
-    private readonly ExpenseCategoryApi _categoryApi;
-    private readonly UserApi _userApi;
     
-    public CategoryHandler(ITelegramBotClient bot, Message message)
+    public CategoryHandler(ITelegramBotClient bot, Message message) : base(bot, message)
     {
-        _bot = bot;
-        _message = message;
         _messageText = _message.Text ?? throw new Exception("Message.Text = Null in CategoryHandler");
-        _tgUserId = message.Chat.Id;
-        _categoryApi = new ExpenseCategoryApi();
-        _userApi = new UserApi();
     }
     
     public async Task<Message> CategoriesCommandHandler()
     {
-        var userCategories = await _categoryApi.GetUserCategories(_tgUserId);
-        var hasCategories = userCategories.Count > 0;
-        
-        return await ShowCategoriesMessage(userCategories, hasCategories);
+        var categories = await _userApi.GetExpenseCategories();
+        var categoryNames = categories.Select(c => c.Name).ToList();
+        return await ShowCategoriesMessage(categoryNames);
     }
 
-    private async Task<Message> ShowCategoriesMessage(List<string> userCategories, bool hasCategories)
+    private async Task<Message> ShowCategoriesMessage(List<string> userCategories)
     {
         var responseMessage = new StringBuilder();
-
+        bool hasCategories = userCategories.Count > 0;
+        
         InlineKeyboardMarkup inlineKeyboard;
         if (hasCategories)
         {
@@ -91,7 +82,7 @@ public class CategoryHandler
             _                       => throw new Exception($"UserWorkMode {workMode.ToString()} does not relate to Category")
         };
         
-        bool success = await _userApi.SetWorkMode(_tgUserId, workMode);
+        bool success = await _userApi.SetWorkMode(workMode);
         Console.WriteLine(success
             ? $"поменяли режим на {workMode.ToString()}"
             : $"не поменяли режим на {workMode.ToString()} (((");
@@ -102,34 +93,32 @@ public class CategoryHandler
 
     public async Task<Message> AddCategoryHandler()
     {
-        string newCategoryText = _messageText.Trim().ToLower();
-        
-        if (newCategoryText.Split(" ").Length > 1)
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-                text: "Название категории должно быть из одного слова!");
+        var newCategoryText = _messageText.Trim().ToLower();
 
-        var infoMessage = await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: "Пытаемся добавить...");
+        var infoMessageId = (await Send("Пытаемся добавить...")).MessageId;
         
-        var userCategories = await _categoryApi.GetUserCategories(_tgUserId);
-        if (userCategories.Contains(newCategoryText))
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-                text: $"У вас уже есть категория {newCategoryText}");
+        var categories = await _userApi.GetExpenseCategories();
+        var categoryNames = categories.Select(c => c.Name).ToList();
+        if (categoryNames.Contains(newCategoryText))
+            return await Edit($"У вас уже есть категория {newCategoryText}", infoMessageId);
         
         var newCategory = new ExpenseCategory(_tgUserId, newCategoryText);
         
-        bool success = await _categoryApi.PostCategory(newCategory);
-        if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId, 
-                text: "Не удалось добавить категорию...");
+        var httpResponseMessage = await _userApi.PostExpenseCategory(newCategory);
+        if (!httpResponseMessage.IsSuccessStatusCode)
+        {
+            var responseText = _userApi.GetErrors(httpResponseMessage);
+            return await Edit(responseText, infoMessageId);
+        }
 
-        success = await _userApi.SetWorkMode(_tgUserId, UserWorkMode.Default);
+        var success = await _userApi.SetWorkMode(UserWorkMode.Default);
         if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: "Категорию добавили, а с воркмодом какая то ошибка...");
-        
-        await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-            text: "Добавили категорию!");
+        {
+            await _userApi.DeleteExpenseCategory(newCategoryText);
+            return await Edit("Не удалось добавить категорию", infoMessageId);
+        }
+
+        await Edit("Добавили категорию!", infoMessageId);
 
         // Show updated categories
         return await CategoriesCommandHandler();
@@ -141,37 +130,38 @@ public class CategoryHandler
         
         var splits = _messageText.Split(' ', StringSplitOptions.TrimEntries);
         if (splits.Length != 2)
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId, replyMarkup: new ReplyKeyboardRemove(),
-                text: "Используйте формат {старая категория} {новая категория}"); 
+            return await Send("Используйте формат {старая категория} {новая категория}");
         
         var oldCategory = splits[0];
         var newCategory = splits[1];
 
         if (oldCategory == newCategory)
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId, replyMarkup: new ReplyKeyboardRemove(),
-                text: "Вы ввели одинаковые названия");
+            return await Send("Вы ввели одинаковые названия");
         
-        var infoMessage = await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: "Пытаемся изменить...");
+        var infoMessageId = (await Send("Пытаемся изменить...")).MessageId;
+        
+        var httpResponseMessage = await _userApi.PutCategory(oldCategory, newCategory);
+        
+        if (httpResponseMessage.StatusCode == HttpStatusCode.NotFound)
+            return await Edit($"У вас нет категории {oldCategory}", infoMessageId);
 
-        var categories = new Dictionary<string, string>
+        if (!httpResponseMessage.IsSuccessStatusCode)
         {
-            { "oldCategory", oldCategory },
-            { "newCategory", newCategory }
-        };
-        
-        bool success = await _categoryApi.PutCategory(_tgUserId, categories);
-        if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: "Не удалось изменить категорию...");
+            var responseText = _userApi.GetErrors(httpResponseMessage);
+            if (responseText == string.Empty) 
+                responseText = "Не удалось изменить категорию...";
+            
+            return await Edit(responseText, infoMessageId);
+        }
 
-        success = await _userApi.SetWorkMode(_tgUserId, UserWorkMode.Default);
+        var success = await _userApi.SetWorkMode(UserWorkMode.Default);
         if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: "Категорию изменили, а с воркмодом какая то ошибка...");
-        
-        await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-            text: "Изменили категорию!");
+        {
+            await _userApi.PutCategory(newCategory, oldCategory);
+            return await Edit("Не удалось изменить категорию", infoMessageId);
+        }
+
+        await Edit("Изменили категорию!", infoMessageId);
         
         // Show updated categories
         return await CategoriesCommandHandler();
@@ -179,62 +169,60 @@ public class CategoryHandler
     
     public async Task<Message> RemoveCategoryHandler()
     {
-        var expenseApi = new ExpenseApi();
-        var infoMessage = await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: "Пытаемся удалить...");
+        var infoMessage = await Send("Пытаемся удалить...");
+        string editText;
         
         var categoryToRemove = _messageText.Trim().ToLower();
 
-        List<string> userCategories = await _categoryApi.GetUserCategories(_tgUserId);
-        if (!userCategories.Contains(categoryToRemove))
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: $"У вас нет категории {categoryToRemove}. Введите название категории, которую хотите удалить:");
-
-        // Get existing expenses with this category
-        List<Expense> expenses = await expenseApi.GetExpensesWithCategory(_tgUserId, categoryToRemove);
-        
-        if (expenses.Count != 0)
+        List<ExpenseCategory> categories = await _userApi.GetExpenseCategories();
+        var categoryNames = categories.Select(c => c.Name).ToList();
+        if (!categoryNames.Contains(categoryToRemove))
         {
-            var inlineKeyboard = new InlineKeyboardMarkup(new[]
-                {
-                    InlineKeyboardButton.WithCallbackData("Да", $"continueRemoveCategory confirm {categoryToRemove}"),
-                    InlineKeyboardButton.WithCallbackData("Нет", $"continueRemoveCategory cancel {categoryToRemove}"),
-                });
-                    
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                replyMarkup: inlineKeyboard,
-                text: $"У вас есть {expenses.Count} трат c категорией {categoryToRemove}. " +
-                       "При удалении категории они также удалятся. Желаете продолжить?");
+            editText =
+                $"У вас нет категории {categoryToRemove}. Введите название категории, которую хотите удалить:";
+            return await Edit(editText, infoMessage.MessageId);
         }
 
-        return await ContinueRemoveCategory(categoryToRemove, true, infoMessage.MessageId);
+        // Get existing expenses with this category
+        var expensesWithCategory = await _userApi.GetExpensesWithCategory(categoryToRemove);
+        var expensesCount = expensesWithCategory.Count;
+
+        if (expensesCount == 0) 
+            return await ContinueRemoveCategory(categoryToRemove, true, infoMessage.MessageId);
+        
+        var inlineKeyboard = new InlineKeyboardMarkup(new[]
+        {
+            InlineKeyboardButton.WithCallbackData("Да", $"continueRemoveCategory confirm {categoryToRemove}"),
+            InlineKeyboardButton.WithCallbackData("Нет", $"continueRemoveCategory cancel {categoryToRemove}"),
+        });
+            
+        editText = $"У вас есть {expensesCount} трат c категорией {categoryToRemove}. " +
+                       "При удалении категории они также удалятся. Желаете продолжить?";
+            
+        return await Edit(editText, infoMessage.MessageId, replyMarkup: inlineKeyboard);
     }
 
     public async Task<Message> ContinueRemoveCategory(string categoryToRemove, bool confirm, int messageId)
     {
-        await _bot.DeleteMessageAsync(chatId: _tgUserId, messageId: messageId);
-        
+        await Delete(messageId);
+
         if (!confirm)
         {
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-                text: "Не удаляем."); 
+            await _userApi.SetWorkMode(UserWorkMode.Default);
+            return await Send("Не удаляем.");
         }
+
+        var infoMessage = await Send("Удаляем..."); 
         
-        var infoMessage = await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: "Удаляем..."); 
-        
-        bool success = await _categoryApi.DeleteAsync(_tgUserId, categoryToRemove);
+        bool success = await _userApi.DeleteExpenseCategory(categoryToRemove);
         if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: "Не удалось удалить категорию...");
+            return await Edit("Не удалось удалить категорию...", msgId: infoMessage.MessageId);
         
-        success = await _userApi.SetWorkMode(_tgUserId, UserWorkMode.Default);
+        success = await _userApi.SetWorkMode(UserWorkMode.Default);
         if (!success)
-            return await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-                text: "Категорию удалили, а воркмод вернуть не удалось...");
+            return await Edit("Категорию удалили, а воркмод вернуть не удалось...", msgId: infoMessage.MessageId);
         
-        await _bot.EditMessageTextAsync(chatId: _tgUserId, messageId: infoMessage.MessageId,
-            text: "Удалили категорию!");
+        await Edit("Удалили категорию!", infoMessage.MessageId);
         
         // Show updated categories
         return await CategoriesCommandHandler();
@@ -242,19 +230,17 @@ public class CategoryHandler
     
     public async Task<Message> BackCategoryHandler()
     {
-        bool success = await _userApi.SetWorkMode(_tgUserId, UserWorkMode.Default);
-        Console.WriteLine(success
-            ? $"поменяли режим на {UserWorkMode.Default.ToString()}"
-            : $"не поменяли режим на {UserWorkMode.Default.ToString()} (((");
-
-        await _bot.DeleteMessageAsync(_tgUserId, _message.MessageId);
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId, replyMarkup: new ReplyKeyboardRemove(),
-            text: "Стандартный режим");
+        bool success = await _userApi.SetWorkMode(UserWorkMode.Default);
+        
+        if (!success) 
+            return await Edit(msg: "Не удалось вернуться в стандартный режим!", msgId: _message.MessageId);
+        
+        await Delete(_message.MessageId);
+        return await Send(msg: "Стандартный режим", replyMarkup: new ReplyKeyboardRemove());
     }
     
     public async Task<Message> UnknownCategoryHandler()
     {
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId, replyMarkup: new ReplyKeyboardRemove(), 
-            text: "Выбраное действие: Неизвестно");
+        return await Send("Выбраное действие: Неизвестно");
     }
 }

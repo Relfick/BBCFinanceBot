@@ -2,86 +2,62 @@
 using System.Text.RegularExpressions;
 using BBCFinanceBot.API;
 using BBCFinanceBot.Models;
+using BBCFinanceBot.Models.DTO;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BBCFinanceBot.BotHandlers;
 
-public class ExpenseHandler
+public class ExpenseHandler : BaseHandler
 {
-    private readonly ITelegramBotClient _bot;
-    private readonly Message _message;
-    private readonly long _tgUserId;
-    private readonly ExpenseApi _expenseApi;
-    private readonly ExpenseCategoryApi _categoryApi;
-
-    public ExpenseHandler(ITelegramBotClient bot, Message message)
-    {
-        _bot = bot;
-        _message = message;
-        _tgUserId = message.Chat.Id;
-        _expenseApi = new ExpenseApi();
-        _categoryApi = new ExpenseCategoryApi();
-    }
+    public ExpenseHandler(ITelegramBotClient bot, Message message) : base(bot, message) { }
 
     public async Task<Message> AddExpenseHandler()
     {
         var r = new Regex(@"(?<name>(\w+\s)+)(?<cost>\d+)\s(?<category>(\w+\s*)+)", RegexOptions.Compiled);
         var m = r.Match(_message.Text!);
         if (!m.Success)
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId, replyMarkup: new ReplyKeyboardRemove(),
-                text: "Используйте формат {покупка} {цена} {категория}");
+            return await Send("Используйте формат {покупка} {цена} {категория}", new ReplyKeyboardRemove());
 
         var expenseName = m.Result("${name}").Trim().ToLower();
-        var expenseCost = int.Parse(m.Result("${cost}"));
-        string expenseCategory = m.Result("${category}").Trim().ToLower();
+        
+        // If parsing failed, expenseCost = 0, so validation will fail
+        int.TryParse(m.Result("${cost}"), out var expenseCost);
+        
+        string expenseCategoryName = m.Result("${category}").Trim().ToLower();
 
-        var userCategories = await _categoryApi.GetUserCategories(_tgUserId);
-        if (!userCategories.Contains(expenseCategory))
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-                text: $"У вас нет категории {expenseCategory}");
+        List<ExpenseCategory> userCategories = await _userApi.GetExpenseCategories();
+        var expenseCategory = userCategories.FirstOrDefault(uc => uc.Name == expenseCategoryName);
+            
+        if (expenseCategory == null)
+            return await Send($"У вас нет категории {expenseCategoryName}");
 
         var expenseDate = DateTime.Now;
 
-        var expense = new Expense(_tgUserId, expenseName, expenseCost, expenseCategory, expenseDate);
+        var expense = new Expense(_tgUserId, expenseName, expenseCost, expenseCategory.Id, expenseDate);
         
-        var httpResponseMessage = await _expenseApi.PostExpense(expense);
+        var httpResponseMessage = await _userApi.PostExpense(expense);
         string responseMessageText = "Добавили!";
 
         if (!httpResponseMessage.IsSuccessStatusCode)
         {
-            var errors = _expenseApi.GetErrors(httpResponseMessage);
-            var errorsSb = new StringBuilder();
-            foreach (var errorText in errors)
-            {
-                errorsSb.Append(errorText + Environment.NewLine);
-            }
-
-            responseMessageText = errorsSb.ToString();
+            responseMessageText = _userApi.GetErrors(httpResponseMessage);
         }
 
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: responseMessageText);
+        return await Send(responseMessageText);
     }
 
-    public async Task<Message> ExpenseCommandHandler()
+    public async Task<Message> ExpensesCommandHandler()
     {
-        List<Expense> expenses = await _expenseApi.GetExpenses(_tgUserId);
+        List<ExpenseDTO> expenses = await _userApi.GetExpenses();
         
         if (expenses.Count == 0)
-            return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-                text: "На данный момент у вас нет трат");
+            return await Send("На данный момент у вас нет трат");
         
         // var lastDate = DateTime.Now.AddDays(-3);
         // var nowDate = DateTime.Now;
-        var expensesLinq = 
-            from expense in expenses
-            // where lastDate < expense.Date && expense.Date < nowDate
-            orderby expense.Date descending
-            select expense;
-
-        expenses = expensesLinq.ToList();
+        expenses = expenses.OrderByDescending(e => e.Date).ToList();
         
         var sb = new StringBuilder();
         // sb.Append($"Ваши траты c {lastDate.ToString("dd.MM")} по {nowDate.ToString("dd.MM")}:\n\n");
@@ -91,10 +67,9 @@ public class ExpenseHandler
             sb.Append($"{expense.Date.ToString("dd.MM")}:  ");
             sb.Append($"{expense.Cost} - ");
             sb.Append($"{expense.Name}  ");
-            sb.Append($"[ {expense.ExpenseCategory} ]  \n");
+            sb.Append($"[ {expense.ExpenseCategoryName} ]  \n");
         }
 
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId,
-            text: sb.ToString());
+        return await Send(sb.ToString());
     }
 }

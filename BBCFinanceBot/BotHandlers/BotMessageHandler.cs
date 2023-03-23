@@ -7,20 +7,9 @@ using User = BBCFinanceBot.Models.User;    // Telegram.Bot.Types contains the sa
 
 namespace BBCFinanceBot.BotHandlers;
 
-public class BotMessageHandler
+public class BotMessageHandler: BaseHandler
 {
-    private readonly Message _message;
-    private readonly long _tgUserId;
-    private readonly ITelegramBotClient _bot;
-
-    public BotMessageHandler(Message? message, ITelegramBotClient bot)
-    {
-        ArgumentNullException.ThrowIfNull(message);
-
-        _message = message;
-        _tgUserId = message.Chat.Id;
-        _bot = bot;
-    }
+    public BotMessageHandler(Message? message, ITelegramBotClient bot): base(bot, message) { }
 
     public async Task BotOnMessageReceived()
     {
@@ -30,10 +19,9 @@ public class BotMessageHandler
         {
             "/start" => StartCommandHandler(),
             "/categories" => new CategoryHandler(_bot, _message).CategoriesCommandHandler(),
-            "/expenses" => new ExpenseHandler(_bot, _message).ExpenseCommandHandler(),
+            "/expenses" => new ExpenseHandler(_bot, _message).ExpensesCommandHandler(),
             "/help" => HelpCommandHandler(),
             _ => TextMessageHandler(),
-            // _ => _bot.SendTextMessageAsync(chatId: _tgUserId, text: "Здарова-здарова")
         };
         await action;
     }
@@ -43,40 +31,34 @@ public class BotMessageHandler
         const string usage = "Введи траты в формате \n{Название} {Стоимость} {Категория}\n\n" +
                              "Для добавления категорий используйте команду /categories";
 
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId, text: usage);
+        return await Send(usage);
     }
 
     private async Task<Message> StartCommandHandler()
     {
-        var userApi = new UserApi();
-
-        if (await userApi.UserExists(_tgUserId))
-            return await _bot.SendTextMessageAsync(
-                chatId: _tgUserId,
-                text: "Ты уже зарегистрирован.");
+        if (_userApi.UserTokenExists())
+            return await Send("Ты уже зарегистрирован.");
 
         string userFirstName = _message.Chat.FirstName ?? "";
         string userUserName = _message.Chat.Username ?? "";
         var newUser = new User(_tgUserId, userFirstName, userUserName);
 
-        bool success = await userApi.PostUser(newUser);
+        bool success = await _userApi.PostUser(newUser);
 
         string responseMessageText = success
-            ? "Привет! Ты успешно зарегистрирован!\n\n" +
-              "Доступные пока команды: \n\n" +
-              "/help"
+            ? "Привет! Ты успешно зарегистрирован!\n\n"
+              // "Доступные пока команды: \n\n" +
+              // "/help"
             : "Ошибка регистрации...";
 
-        return await _bot.SendTextMessageAsync(chatId: _tgUserId, text: responseMessageText);
+        return await Send(responseMessageText);
     }
 
     private async Task<Message> TextMessageHandler()
     {
-        UserWorkMode? userWorkMode = await new UserApi().GetWorkMode(_tgUserId);
+        var userWorkMode = await _userApi.GetWorkMode();
         if (userWorkMode == null)
             throw new NullReferenceException("Null in user.WorkMode");
-
-        Console.WriteLine($"Workmode: {userWorkMode.ToString()}");
 
         var action = userWorkMode switch
         {

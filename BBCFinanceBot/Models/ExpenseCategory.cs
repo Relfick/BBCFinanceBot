@@ -4,11 +4,11 @@ public class ExpenseCategory
 {
     public int Id { get; set; }
     public long UserId { get; set; }
-    public string Category { get; set; }
+    public string Name { get; set; }
     
-    public ExpenseCategory(long userId, string category)
+    public ExpenseCategory(long userId, string name)
     {
         UserId = userId;
-        Category = category;
+        Name = name;
     }
 }
