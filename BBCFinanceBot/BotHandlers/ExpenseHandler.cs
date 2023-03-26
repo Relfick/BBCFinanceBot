@@ -61,7 +61,7 @@ public class ExpenseHandler : BaseHandler
         
         var sb = new StringBuilder();
         // sb.Append($"Ваши траты c {lastDate.ToString("dd.MM")} по {nowDate.ToString("dd.MM")}:\n\n");
-        sb.Append("Ваши траты: n\n");
+        sb.Append($"Ваши траты: {expenses.Count}\n");
         foreach (var expense in expenses)
         {
             sb.Append($"{expense.Date.ToString("dd.MM")}:  ");
